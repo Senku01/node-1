@@ -24,19 +24,20 @@ jobs:
     - name: Setup Go
       uses: actions/setup-go@v5
       with:
-        go-version: "1.22"
+        go-version: "1.25"
 
     - name: Install recon tools
       run: |
         go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
         go install github.com/tomnomnom/assetfinder@latest
-        go install github.com/owasp-amass/amass/amass@latest
+        go install github.com/owasp-amass/amass@latest
         go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest
         go install github.com/projectdiscovery/httpx/cmd/httpx@latest
         go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
         go install github.com/lc/gau/v2/cmd/gau@latest
         go install github.com/tomnomnom/waybackurls@latest
         echo "$HOME/go/bin" >> $GITHUB_PATH
+
 
     - name: Fetch & run recon engine (private)
       env:
