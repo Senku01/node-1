@@ -1,0 +1,52 @@
+name: Continuous Recon Runner
+
+permissions:
+  contents: read   # runner repo stays read-only
+
+on:
+  schedule:
+    - cron: "0 */3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: recon
+  cancel-in-progress: false
+
+jobs:
+  recon:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+    - name: Checkout runner repo
+      uses: actions/checkout@v4
+
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: "1.22"
+
+    - name: Install recon tools
+      run: |
+        go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+        go install github.com/tomnomnom/assetfinder@latest
+        go install github.com/owasp-amass/amass/amass@latest
+        go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest
+        go install github.com/projectdiscovery/httpx/cmd/httpx@latest
+        go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+        go install github.com/lc/gau/v2/cmd/gau@latest
+        go install github.com/tomnomnom/waybackurls@latest
+        echo "$HOME/go/bin" >> $GITHUB_PATH
+
+    - name: Fetch & run recon engine (private)
+      env:
+        RECON_ENGINE_URL: ${{ secrets.RECON_ENGINE_URL }}
+        DOMAINS_URL: ${{ secrets.DOMAINS_URL }}
+        SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+        RESULTS_REPO: ${{ secrets.RESULTS_REPO }}
+        RESULTS_REPO_TOKEN: ${{ secrets.RESULTS_REPO_TOKEN }}
+      run: |
+        set -e
+        curl -fsSL "$RECON_ENGINE_URL" -o recon-engine.sh
+        chmod +x recon-engine.sh
+        ./recon-engine.sh
