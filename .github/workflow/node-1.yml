@@ -1,133 +1,52 @@
-#!/bin/bash
-set -euo pipefail
+name: Continuous Recon Runner
 
-#################################
-# SYSTEM AWARE OPTIMIZATION
-#################################
-CORES=$(nproc)
-HTTPX_THREADS=$((CORES * 50))
-NUCLEI_RATE=$((CORES * 60))
+permissions:
+  contents: read   # runner repo stays read-only
 
-#################################
-# CONFIG
-#################################
-DOMAINS_FILE="domains.txt"
-OUT="recon"
-SLACK_WEBHOOK="${SLACK_WEBHOOK:-}"
+on:
+  schedule:
+    - cron: "0 */3 * * *"
+  workflow_dispatch:
 
-mkdir -p "$OUT"
+concurrency:
+  group: recon
+  cancel-in-progress: false
 
-#################################
-# SLACK FUNCTION (PRO TEMPLATE)
-#################################
-notify() {
-  local DOMAIN=$1
-  local SUB=$2
-  local ALIVE=$3
-  local URL=$4
-  local FIND=$5
+jobs:
+  recon:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
 
-  curl -s -X POST -H 'Content-type: application/json' \
-  --data "{
-    \"blocks\": [
-      {\"type\":\"header\",\"text\":{\"type\":\"plain_text\",\"text\":\"🧠 Recon Update: $DOMAIN\"}},
-      {\"type\":\"section\",\"fields\": [
-        {\"type\":\"mrkdwn\",\"text\":\"*New Subdomains*\\n$SUB\"},
-        {\"type\":\"mrkdwn\",\"text\":\"*New Alive Hosts*\\n$ALIVE\"},
-        {\"type\":\"mrkdwn\",\"text\":\"*New URLs*\\n$URL\"},
-        {\"type\":\"mrkdwn\",\"text\":\"*Nuclei Findings*\\n$FIND\"}
-      ]}
-    ]
-  }" "$SLACK_WEBHOOK" > /dev/null
-}
+    steps:
+    - name: Checkout runner repo
+      uses: actions/checkout@v4
 
-#################################
-# MAIN LOOP
-#################################
-while read -r DOMAIN; do
-  [[ -z "$DOMAIN" ]] && continue
-  [[ "$DOMAIN" =~ ^✔ ]] && continue
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: "1.22"
 
-  echo "[+] Recon: $DOMAIN"
-  D="$OUT/$DOMAIN"
-  mkdir -p "$D"
+    - name: Install recon tools
+      run: |
+        go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+        go install github.com/tomnomnom/assetfinder@latest
+        go install github.com/owasp-amass/amass/amass@latest
+        go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest
+        go install github.com/projectdiscovery/httpx/cmd/httpx@latest
+        go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+        go install github.com/lc/gau/v2/cmd/gau@latest
+        go install github.com/tomnomnom/waybackurls@latest
+        echo "$HOME/go/bin" >> $GITHUB_PATH
 
-  #################################
-  # SUBDOMAIN ENUM (PARALLEL)
-  #################################
-  {
-    subfinder -d "$DOMAIN" -silent &
-    assetfinder --subs-only "$DOMAIN" &
-    amass enum -passive -norecursive -d "$DOMAIN" &
-    wait
-  } | sort -u > "$D/subs_today.txt"
-
-  if [[ -f "$D/subs_prev.txt" ]]; then
-    comm -13 "$D/subs_prev.txt" "$D/subs_today.txt" > "$D/subs_new.txt"
-  else
-    cp "$D/subs_today.txt" "$D/subs_new.txt"
-  fi
-  cp "$D/subs_today.txt" "$D/subs_prev.txt"
-
-  SUB_NEW=$(wc -l < "$D/subs_new.txt" || echo 0)
-
-  #################################
-  # ALIVE CHECK (THREADED)
-  #################################
-  cat "$D/subs_new.txt" \
-    | dnsx -silent \
-    | httpx -silent -threads "$HTTPX_THREADS" \
-    > "$D/alive_today.txt"
-
-  if [[ -f "$D/alive_prev.txt" ]]; then
-    comm -13 "$D/alive_prev.txt" "$D/alive_today.txt" > "$D/alive_new.txt"
-  else
-    cp "$D/alive_today.txt" "$D/alive_new.txt"
-  fi
-  cp "$D/alive_today.txt" "$D/alive_prev.txt"
-
-  ALIVE_NEW=$(wc -l < "$D/alive_new.txt" || echo 0)
-
-  #################################
-  # URL DISCOVERY (PARALLEL)
-  #################################
-  {
-    cat "$D/alive_new.txt" | gau --subs &
-    cat "$D/alive_new.txt" | waybackurls &
-    wait
-  } | sort -u > "$D/urls_today.txt"
-
-  if [[ -f "$D/urls_prev.txt" ]]; then
-    comm -13 "$D/urls_prev.txt" "$D/urls_today.txt" > "$D/urls_new.txt"
-  else
-    cp "$D/urls_today.txt" "$D/urls_new.txt"
-  fi
-  cp "$D/urls_today.txt" "$D/urls_prev.txt"
-
-  URL_NEW=$(wc -l < "$D/urls_new.txt" || echo 0)
-
-  #################################
-  # NUCLEI (DIFF ONLY)
-  #################################
-  if [[ "$ALIVE_NEW" -gt 0 ]]; then
-    nuclei -l "$D/alive_new.txt" \
-      -severity medium,high,critical \
-      -rate-limit "$NUCLEI_RATE" \
-      -o "$D/nuclei_new.txt" || true
-  fi
-
-  FINDINGS=$(wc -l < "$D/nuclei_new.txt" || echo 0)
-
-  #################################
-  # SLACK ALERT
-  #################################
-  notify "$DOMAIN" "$SUB_NEW" "$ALIVE_NEW" "$URL_NEW" "$FINDINGS"
-
-  #################################
-  # MARK DOMAIN DONE
-  #################################
-  sed -i "s|^$DOMAIN$|✔ $DOMAIN|" "$DOMAINS_FILE"
-
-done < "$DOMAINS_FILE"
-
-echo "[✓] Recon completed"
+    - name: Fetch & run recon engine (private)
+      env:
+        RECON_ENGINE_URL: ${{ secrets.RECON_ENGINE_URL }}
+        DOMAINS_URL: ${{ secrets.DOMAINS_URL }}
+        SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+        RESULTS_REPO: ${{ secrets.RESULTS_REPO }}
+        RESULTS_REPO_TOKEN: ${{ secrets.RESULTS_REPO_TOKEN }}
+      run: |
+        set -e
+        curl -fsSL "$RECON_ENGINE_URL" -o recon-engine.sh
+        chmod +x recon-engine.sh
+        ./recon-engine.sh
