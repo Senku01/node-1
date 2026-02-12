@@ -28,9 +28,10 @@ jobs:
 
     - name: Install recon tools
       run: |
+        sudo apt-get update
+        sudo apt-get install -y amass
         go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
         go install github.com/tomnomnom/assetfinder@latest
-        go install github.com/owasp-amass/amass@latest
         go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest
         go install github.com/projectdiscovery/httpx/cmd/httpx@latest
         go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
