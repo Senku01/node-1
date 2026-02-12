@@ -28,10 +28,9 @@ jobs:
 
     - name: Install recon tools
       run: |
-        curl -L https://github.com/owasp-amass/amass/releases/latest/download/amass_linux_amd64.zip -o amass.zip
-        unzip amass.zip
-        sudo mv amass_linux_amd64/amass /usr/local/bin/
-
+        sudo apt-get update
+        sudo apt-get install -y snapd
+        sudo snap install amass
         go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
         go install github.com/tomnomnom/assetfinder@latest
         go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest
