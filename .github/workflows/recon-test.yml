@@ -33,13 +33,13 @@ jobs:
 
     - name: Fetch & run test recon engine
       env:
-        RECON_ENGINE_URL: ${{ secrets.RECON_ENGINE_URL }}
+        RECON_TEST_ENGINE_URL: ${{ secrets.RECON_TEST_ENGINE_URL }}
         DOMAINS_URL: ${{ secrets.DOMAINS_URL }}
         SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
         RESULTS_REPO: ${{ secrets.RESULTS_REPO }}
         RESULTS_REPO_TOKEN: ${{ secrets.RESULTS_REPO_TOKEN }}
       run: |
-        curl -fsSL "$RECON_ENGINE_URL" -o recon-test.sh
+        curl -fsSL "$RECON_TEST_ENGINE_URL" -o recon-test.sh
 
         # Safety check (HTML guard)
         if grep -q "<!DOCTYPE html>" recon-test.sh; then
