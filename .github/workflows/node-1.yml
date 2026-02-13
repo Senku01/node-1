@@ -38,6 +38,7 @@ jobs:
         go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
         go install github.com/lc/gau/v2/cmd/gau@latest
         go install github.com/tomnomnom/waybackurls@latest
+        nuclei -update-templates
         echo "$HOME/go/bin" >> $GITHUB_PATH
 
 
