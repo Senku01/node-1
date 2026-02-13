@@ -1,0 +1,51 @@
+name: Recon Test – Subdomain Only
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+
+jobs:
+  recon-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+    - name: Checkout runner
+      uses: actions/checkout@v4
+
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: "1.25"
+
+    - name: Install tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y snapd
+        sudo snap install amass
+
+        go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+        go install github.com/tomnomnom/assetfinder@latest
+
+        echo "$HOME/go/bin" >> $GITHUB_PATH
+
+    - name: Fetch & run test recon engine
+      env:
+        RECON_ENGINE_URL: ${{ secrets.RECON_ENGINE_URL }}
+        DOMAINS_URL: ${{ secrets.DOMAINS_URL }}
+        SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+        RESULTS_REPO: ${{ secrets.RESULTS_REPO }}
+        RESULTS_REPO_TOKEN: ${{ secrets.RESULTS_REPO_TOKEN }}
+      run: |
+        curl -fsSL "$RECON_ENGINE_URL" -o recon-test.sh
+
+        # Safety check (HTML guard)
+        if grep -q "<!DOCTYPE html>" recon-test.sh; then
+          echo "[!] ERROR: Downloaded HTML instead of script"
+          exit 1
+        fi
+
+        chmod +x recon-test.sh
+        ./recon-test.sh
