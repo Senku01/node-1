@@ -1,7 +1,7 @@
 name: Continuous Recon Runner
 
 permissions:
-  contents: read   # runner repo stays read-only
+  contents: read
 
 on:
   schedule:
@@ -18,31 +18,27 @@ jobs:
     timeout-minutes: 120
 
     steps:
-    - name: Checkout runner repo
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-    - name: Setup Go
-      uses: actions/setup-go@v5
+    - uses: actions/setup-go@v5
       with:
         go-version: "1.25"
 
-    - name: Install recon tools
+    - name: Install tools
       run: |
         sudo apt-get update
         sudo apt-get install -y snapd
         sudo snap install amass
+
         go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
         go install github.com/tomnomnom/assetfinder@latest
         go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest
         go install github.com/projectdiscovery/httpx/cmd/httpx@latest
         go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
-        go install github.com/lc/gau/v2/cmd/gau@latest
-        go install github.com/tomnomnom/waybackurls@latest
         nuclei -update-templates
         echo "$HOME/go/bin" >> $GITHUB_PATH
 
-
-    - name: Fetch & run recon engine (private)
+    - name: Fetch & run recon engine
       env:
         RECON_ENGINE_URL: ${{ secrets.RECON_ENGINE_URL }}
         DOMAINS_URL: ${{ secrets.DOMAINS_URL }}
@@ -50,7 +46,10 @@ jobs:
         RESULTS_REPO: ${{ secrets.RESULTS_REPO }}
         RESULTS_REPO_TOKEN: ${{ secrets.RESULTS_REPO_TOKEN }}
       run: |
-        set -e
         curl -fsSL "$RECON_ENGINE_URL" -o recon-engine.sh
+        if grep -q "<!DOCTYPE html>" recon-engine.sh; then
+          echo "[!] ERROR: HTML downloaded instead of script"
+          exit 1
+        fi
         chmod +x recon-engine.sh
         ./recon-engine.sh
